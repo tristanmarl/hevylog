@@ -9,7 +9,10 @@ import type {
 
 const BASE_URL = 'https://api.hevyapp.com'
 const PAGE_SIZE = 10
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+// Keys persisted to sessionStorage so data survives page reloads within the same tab.
+const SESSION_KEYS = new Set(['__all_workouts__', '__all_bodyweights__', '__all_exercise_templates__'])
+const SESSION_PREFIX = 'hevylog:'
 
 interface CacheEntry<T> {
   data: T
@@ -18,18 +21,26 @@ interface CacheEntry<T> {
 
 const cache = new Map<string, CacheEntry<unknown>>()
 
+// Warm in-memory cache from sessionStorage on module load.
+;(function warmCache() {
+  for (const key of SESSION_KEYS) {
+    try {
+      const raw = sessionStorage.getItem(SESSION_PREFIX + key)
+      if (raw) cache.set(key, { data: JSON.parse(raw) as unknown, timestamp: Date.now() })
+    } catch { /* ignore parse / quota errors */ }
+  }
+})()
+
 function getCached<T>(key: string): T | null {
   const entry = cache.get(key) as CacheEntry<T> | undefined
-  if (!entry) return null
-  if (Date.now() - entry.timestamp > CACHE_TTL) {
-    cache.delete(key)
-    return null
-  }
-  return entry.data
+  return entry ? entry.data : null
 }
 
 function setCached<T>(key: string, data: T): void {
   cache.set(key, { data, timestamp: Date.now() })
+  if (SESSION_KEYS.has(key)) {
+    try { sessionStorage.setItem(SESSION_PREFIX + key, JSON.stringify(data)) } catch { /* storage full */ }
+  }
 }
 
 async function apiFetch<T>(path: string): Promise<T> {
@@ -134,6 +145,7 @@ export async function fetchExerciseTemplates(): Promise<ExerciseTemplate[]> {
 
 export function clearCache(): void {
   cache.clear()
+  SESSION_KEYS.forEach((key) => sessionStorage.removeItem(SESSION_PREFIX + key))
 }
 
 export function getLastFetchTime(): Date | null {

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO } from 'date-fns'
 import {
   BarChart,
@@ -111,6 +112,7 @@ const WORKOUT_MILESTONE_TARGETS: Record<string, number> = {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { version } = useDataVersion()
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -138,7 +140,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [version])
 
   useEffect(() => { load() }, [load])
 

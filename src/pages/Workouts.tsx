@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useDataVersion } from '../context/DataVersion'
 import {
   format,
   parseISO,
@@ -30,6 +31,7 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export default function Workouts() {
   const navigate = useNavigate()
+  const { version } = useDataVersion()
   const [allWorkouts, setAllWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -46,7 +48,7 @@ export default function Workouts() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [version])
 
   useEffect(() => { load() }, [load])
 

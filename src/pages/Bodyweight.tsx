@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO, subDays, differenceInDays } from 'date-fns'
 import {
   LineChart,
@@ -28,6 +29,7 @@ function unitLabel(unit: Unit): string {
 }
 
 export default function Bodyweight() {
+  const { version } = useDataVersion()
   const [entries, setEntries] = useState<BodyweightEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -53,7 +55,7 @@ export default function Bodyweight() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [version])
 
   useEffect(() => {
     load()

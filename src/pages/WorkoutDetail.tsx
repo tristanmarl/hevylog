@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO } from 'date-fns'
 import { fetchWorkout, fetchAllWorkouts } from '../api/hevy'
 import type { Workout, WorkoutSet } from '../types/hevy'
@@ -64,6 +65,7 @@ function setVolume(set: WorkoutSet): string {
 export default function WorkoutDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { version } = useDataVersion()
   const [workout, setWorkout] = useState<Workout | null>(null)
   const [allWorkouts, setAllWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
@@ -85,7 +87,7 @@ export default function WorkoutDetail() {
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, version])
 
   useEffect(() => {
     load()

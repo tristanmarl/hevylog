@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO, subDays } from 'date-fns'
 import {
   LineChart,
@@ -33,6 +34,7 @@ interface ExerciseSummary {
 }
 
 export default function Exercises() {
+  const { version } = useDataVersion()
   const [allWorkouts, setAllWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +53,7 @@ export default function Exercises() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [version])
 
   useEffect(() => {
     load()

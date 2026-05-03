@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { fetchAllWorkouts, getLastFetchTime } from '../api/hevy'
 import type { Workout } from '../types/hevy'
 import GlobalSearch from './GlobalSearch'
+import { useDataVersion } from '../context/DataVersion'
 
 interface NavItem {
   to: string
@@ -103,10 +104,12 @@ function formatMinutesAgo(date: Date): string {
 }
 
 export default function Layout() {
+  const { version, refresh } = useDataVersion()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const [lastFetchLabel, setLastFetchLabel] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   const loadWorkouts = useCallback(async () => {
     try {
@@ -115,7 +118,14 @@ export default function Layout() {
     } catch {
       // silently ignore
     }
-  }, [])
+  }, [version])
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    refresh()
+    // brief visual feedback before the page re-fetches
+    setTimeout(() => setRefreshing(false), 800)
+  }
 
   useEffect(() => {
     loadWorkouts()
@@ -222,16 +232,30 @@ export default function Layout() {
           </button>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4" style={{ borderTop: '1px solid #222' }}>
-          <p className="text-xs" style={{ color: '#555' }}>
-            Powered by Hevy API
-          </p>
-          {lastFetchLabel && (
-            <p className="text-xs mt-0.5" style={{ color: '#444' }}>
-              Updated {lastFetchLabel}
-            </p>
-          )}
+        {/* Refresh button */}
+        <div className="px-3 pb-4 pt-3" style={{ borderTop: '1px solid #222' }}>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors"
+            style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', color: refreshing ? '#555' : '#888' }}
+            onMouseEnter={(e) => { if (!refreshing) { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#ccc' } }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.color = refreshing ? '#555' : '#888' }}
+          >
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round"
+              style={{ flexShrink: 0, animation: refreshing ? 'spin 0.8s linear infinite' : undefined }}
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+            <span>{refreshing ? 'Refreshing…' : 'Refresh data'}</span>
+            {lastFetchLabel && !refreshing && (
+              <span className="ml-auto text-xs" style={{ color: '#555' }}>{lastFetchLabel}</span>
+            )}
+          </button>
         </div>
       </aside>
 

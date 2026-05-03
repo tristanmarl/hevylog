@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { fetchAllWorkouts } from '../api/hevy'
 import type { Workout, MuscleGroupStats } from '../types/hevy'
@@ -253,6 +254,7 @@ function BodySVG({
 }
 
 export default function BodyHeatmap() {
+  const { version } = useDataVersion()
   const [allWorkouts, setAllWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -271,7 +273,7 @@ export default function BodyHeatmap() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [version])
 
   useEffect(() => {
     load()
