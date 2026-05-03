@@ -7,6 +7,7 @@ interface StatCardProps {
   title: string
   hint?: string
   value: string | number
+  note?: string
   subtitle?: string
   trend?: TrendDirection
   trendValue?: string
@@ -49,6 +50,7 @@ export default function StatCard({
   title,
   hint,
   value,
+  note,
   subtitle,
   trend,
   trendValue,
@@ -71,6 +73,9 @@ export default function StatCard({
       <p className="text-3xl font-bold tracking-tight text-white mt-1">
         {value}
       </p>
+      {note && (
+        <p className="text-xs font-medium" style={{ color: '#e86a2e' }}>{note}</p>
+      )}
       <div className="flex items-center justify-between mt-1">
         {subtitle && (
           <p className="text-sm" style={{ color: '#666' }}>

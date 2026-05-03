@@ -76,6 +76,28 @@ const MUSCLE_MEV_NOTE: Record<string, string> = {
   core: 'Heavily stimulated by all compound lifts (squats, deadlifts, rows). Very little direct work needed.',
 }
 
+const VOLUME_REFS = [
+  { emoji: '🚗', singular: 'car',        plural: 'cars',        kg: 1_500  },
+  { emoji: '🐘', singular: 'elephant',   plural: 'elephants',   kg: 5_000  },
+  { emoji: '🚌', singular: 'bus',        plural: 'buses',       kg: 12_000 },
+  { emoji: '✈️', singular: 'plane',      plural: 'planes',      kg: 70_000 },
+  { emoji: '🐋', singular: 'blue whale', plural: 'blue whales', kg: 150_000 },
+]
+
+function volumeContext(kg: number): string | null {
+  if (kg < 200) return null
+  for (const ref of VOLUME_REFS) {
+    const ratio = kg / ref.kg
+    if (ratio < 8) {
+      const n = Math.round(ratio * 10) / 10
+      return `≈ ${n} ${ref.emoji} ${n === 1 ? ref.singular : ref.plural}`
+    }
+  }
+  const last = VOLUME_REFS[VOLUME_REFS.length - 1]
+  const n = Math.round((kg / last.kg) * 10) / 10
+  return `≈ ${n} ${last.emoji} ${last.plural}`
+}
+
 const SPLIT_TIPS: Record<string, string> = {
   'Full Body': 'Great for beginners — trains all muscles each session.',
   'Upper / Lower': 'Splits training into upper body days and lower body days.',
@@ -236,6 +258,7 @@ export default function Dashboard() {
             title: 'Volume',
             hint: 'Total weight moved: sets × reps × weight across all exercises. Trending up over time means you\'re getting stronger.',
             value: formatVolume(current.totalVolumeKg),
+            note: volumeContext(current.totalVolumeKg) ?? undefined,
             trend: trendDir(volumeChange),
             trendValue: trendLabel(volumeChange),
           },
