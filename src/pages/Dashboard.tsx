@@ -56,6 +56,26 @@ const MUSCLE_CATEGORY: Record<string, string> = {
   legs: 'lower', core: 'core',
 }
 
+// Minimum effective volume per week (sets). Based on Israetel/Schoenfeld research.
+// Biceps/triceps/shoulders/core are lower because compound lifts provide significant indirect stimulus.
+// Beginner note: even half these numbers produce growth in the first 6-12 months.
+const MUSCLE_MEV: Record<string, number> = {
+  back: 10,
+  chest: 8,
+  legs: 8,
+  shoulders: 6,
+  biceps: 6,
+  triceps: 6,
+  core: 4,
+}
+
+const MUSCLE_MEV_NOTE: Record<string, string> = {
+  biceps: 'Gets ~60% stimulus from rows & pull-ups. Direct curls supplement, not replace.',
+  triceps: 'Gets ~60% stimulus from pressing movements. Direct work supplements compounds.',
+  shoulders: 'Gets substantial indirect work from chest and back exercises.',
+  core: 'Heavily stimulated by all compound lifts (squats, deadlifts, rows). Very little direct work needed.',
+}
+
 const SPLIT_TIPS: Record<string, string> = {
   'Full Body': 'Great for beginners — trains all muscles each session.',
   'Upper / Lower': 'Splits training into upper body days and lower body days.',
@@ -560,7 +580,7 @@ export default function Dashboard() {
                     <p className="text-xs font-medium" style={{ color: '#888' }}>
                       Push / Pull / Lower balance (last 4 weeks)
                     </p>
-                    <Tooltip text="Healthy training has roughly equal push and pull sets, plus regular leg work. Imbalances build up slowly and can cause shoulder or knee issues over time.">
+                    <Tooltip text="Healthy ratio: ~1:1 push-to-pull sets (or slightly more pull). Pull work is often undertrained. Imbalances accumulate slowly and cause shoulder issues. Legs are separate — aim for at least 25% of your total sets.">
                       <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
                     </Tooltip>
                   </div>
@@ -654,23 +674,24 @@ export default function Dashboard() {
                 <p className="text-xs font-medium" style={{ color: '#888' }}>
                   Sets per week by muscle
                 </p>
-                <Tooltip text="Aim for 10–20 sets/week per muscle group to see consistent growth. Under 5 = likely not enough stimulus. The bar fills to 10 sets (minimum effective dose).">
+                <Tooltip text="Minimum effective volume varies by muscle. Biceps/triceps/core need less direct work because compound lifts already stimulate them heavily. Bar fills to each muscle's MEV (minimum effective volume).">
                   <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
                 </Tooltip>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                 {muscleFrequency.map((mf) => {
                   const category = MUSCLE_CATEGORY[mf.muscle] ?? ''
+                  const mev = MUSCLE_MEV[mf.muscle] ?? 8
+                  const note = MUSCLE_MEV_NOTE[mf.muscle]
                   const barColor =
-                    mf.avgSetsPerWeek >= 10
+                    mf.avgSetsPerWeek >= mev
                       ? '#4ade80'
-                      : mf.avgSetsPerWeek >= 5
+                      : mf.avgSetsPerWeek >= mev * 0.5
                       ? '#facc15'
                       : '#f87171'
-                  const targetPct = Math.min(1, mf.avgSetsPerWeek / 10)
-                  return (
+                  const targetPct = Math.min(1, mf.avgSetsPerWeek / mev)
+                  const card = (
                     <div
-                      key={mf.muscle}
                       className="rounded-lg px-3 py-2.5"
                       style={{ backgroundColor: '#252525', border: '1px solid #333' }}
                     >
@@ -684,6 +705,7 @@ export default function Dashboard() {
                       </div>
                       <p className="text-xs font-medium" style={{ color: barColor }}>
                         {mf.avgSetsPerWeek} sets/wk
+                        <span style={{ color: '#555', fontWeight: 400 }}> / {mev} target</span>
                       </p>
                       <div
                         className="mt-1.5 rounded-full h-1"
@@ -696,6 +718,11 @@ export default function Dashboard() {
                       </div>
                     </div>
                   )
+                  return note ? (
+                    <Tooltip key={mf.muscle} text={note}>
+                      {card}
+                    </Tooltip>
+                  ) : card
                 })}
               </div>
             </div>
