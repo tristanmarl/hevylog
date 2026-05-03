@@ -8,15 +8,18 @@ import { FullPageSpinner } from '../components/Spinner'
 import ErrorBanner from '../components/ErrorBanner'
 import AppTooltip from '../components/Tooltip'
 
+// MEV = minimum effective volume (sets/week). MAV = maximum adaptive volume.
+// Secondary muscles (biceps, triceps, shoulders, core) need less direct work
+// because compound lifts already stimulate them heavily.
 const MUSCLE_TARGETS: Record<string, { mev: number; mav: number }> = {
-  chest: { mev: 10, mav: 20 },
-  back: { mev: 10, mav: 20 },
-  shoulders: { mev: 8, mav: 16 },
-  biceps: { mev: 8, mav: 14 },
-  triceps: { mev: 6, mav: 12 },
-  legs: { mev: 12, mav: 20 },
-  core: { mev: 8, mav: 16 },
-  cardio: { mev: 3, mav: 6 },
+  back:      { mev: 10, mav: 22 },
+  chest:     { mev: 8,  mav: 20 },
+  legs:      { mev: 8,  mav: 20 },
+  shoulders: { mev: 6,  mav: 20 },
+  biceps:    { mev: 6,  mav: 18 },
+  triceps:   { mev: 6,  mav: 14 },
+  core:      { mev: 4,  mav: 16 },
+  cardio:    { mev: 3,  mav: 6  },
 }
 
 function daysAgoColor(lastWorked: string): string {
@@ -321,11 +324,11 @@ export default function BodyHeatmap() {
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-xs" style={{ color: '#666' }}>Sets:</span>
         {[
-          { label: '0 sets — untrained', color: '#2a2a2a' },
-          { label: '1–5 sets — light work', color: '#4a3020' },
-          { label: '6–10 sets — maintenance volume', color: '#7a4a20' },
-          { label: '11–20 sets — growth zone', color: '#c86020' },
-          { label: '21+ sets — high volume', color: '#e86a2e' },
+          { label: '0 sets', color: '#2a2a2a' },
+          { label: '1–5 sets', color: '#4a3020' },
+          { label: '6–10 sets', color: '#7a4a20' },
+          { label: '11–20 sets', color: '#c86020' },
+          { label: '21+ sets', color: '#e86a2e' },
         ].map(({ label, color }) => (
           <div key={label} className="flex items-center gap-1">
             <div className="w-4 h-4 rounded" style={{ backgroundColor: color, border: '1px solid #333' }} />
