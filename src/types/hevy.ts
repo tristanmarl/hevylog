@@ -20,6 +20,7 @@ export interface WorkoutExercise {
 
 export interface Workout {
   id: string
+  routine_id?: string | null
   title: string
   description: string
   start_time: string // ISO

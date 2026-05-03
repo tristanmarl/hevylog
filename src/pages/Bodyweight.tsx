@@ -35,14 +35,6 @@ export default function Bodyweight() {
   const [error, setError] = useState<string | null>(null)
   const [unit, setUnit] = useState<Unit>('kg')
   const [range, setRange] = useState<30 | 90 | 180 | 365 | 'all'>(90)
-  const [goal, setGoal] = useState<'cutting' | 'bulking' | 'maintaining'>(
-    () => (localStorage.getItem('bw-goal') as 'cutting' | 'bulking' | 'maintaining') ?? 'maintaining'
-  )
-
-  function handleGoalChange(g: 'cutting' | 'bulking' | 'maintaining') {
-    setGoal(g)
-    localStorage.setItem('bw-goal', g)
-  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -126,25 +118,6 @@ export default function Bodyweight() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Goal toggle */}
-          <div
-            className="flex items-center rounded-lg overflow-hidden"
-            style={{ border: '1px solid #333', backgroundColor: '#1a1a1a' }}
-          >
-            {(['cutting', 'maintaining', 'bulking'] as const).map((g) => (
-              <button
-                key={g}
-                onClick={() => handleGoalChange(g)}
-                className="px-3 py-2 text-sm font-medium transition-colors capitalize"
-                style={{
-                  backgroundColor: goal === g ? '#e86a2e' : 'transparent',
-                  color: goal === g ? '#fff' : '#888',
-                }}
-              >
-                {g.charAt(0).toUpperCase() + g.slice(1)}
-              </button>
-            ))}
-          </div>
           {/* Unit toggle */}
           <div
             className="flex items-center rounded-lg overflow-hidden"
@@ -183,13 +156,6 @@ export default function Bodyweight() {
           title="Total Change"
           value={`${totalChange >= 0 ? '+' : ''}${toDisplay(totalChange, unit)} ${unitLabel(unit)}`}
           subtitle="all time"
-          trend={
-            goal === 'maintaining'
-              ? 'neutral'
-              : goal === 'cutting'
-              ? totalChange < 0 ? 'up' : totalChange > 0 ? 'down' : 'neutral'
-              : totalChange > 0 ? 'up' : totalChange < 0 ? 'down' : 'neutral'
-          }
         />
         <StatCard
           title="30-day Trend"
@@ -199,13 +165,6 @@ export default function Bodyweight() {
               : '—'
           }
           subtitle="last 30 days"
-          trend={
-            trend30 === null || goal === 'maintaining'
-              ? 'neutral'
-              : goal === 'cutting'
-              ? trend30 < 0 ? 'up' : trend30 > 0 ? 'down' : 'neutral'
-              : trend30 > 0 ? 'up' : trend30 < 0 ? 'down' : 'neutral'
-          }
         />
       </div>
 

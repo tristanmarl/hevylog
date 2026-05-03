@@ -1,5 +1,7 @@
 import type {
   Workout,
+  WorkoutExercise,
+  WorkoutSet,
   WorkoutsResponse,
   ExerciseTemplate,
   ExerciseTemplatesResponse,
@@ -20,6 +22,32 @@ interface CacheEntry<T> {
 }
 
 const cache = new Map<string, CacheEntry<unknown>>()
+
+interface WorkoutRequestSet {
+  type: string
+  weight_kg: number | null
+  reps: number | null
+  distance_meters: number | null
+  duration_seconds: number | null
+  rpe: number | null
+}
+
+interface WorkoutRequestExercise {
+  exercise_template_id: string
+  superset_id: string | number | null
+  notes: string | null
+  sets: WorkoutRequestSet[]
+}
+
+interface WorkoutRequestBody {
+  workout: {
+    title: string
+    description: string | null
+    start_time: string
+    end_time: string
+    exercises: WorkoutRequestExercise[]
+  }
+}
 
 // Warm in-memory cache from sessionStorage on module load.
 ;(function warmCache() {
@@ -68,6 +96,57 @@ async function apiFetch<T>(path: string): Promise<T> {
   return data
 }
 
+async function apiMutation<T>(path: string, method: 'PUT' | 'POST', body: unknown): Promise<T> {
+  const apiKey = import.meta.env.VITE_HEVY_API_KEY as string
+  if (!apiKey) {
+    throw new Error('VITE_HEVY_API_KEY is not set. Create a .env file with your Hevy API key.')
+  }
+
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    let detail = `${response.status} ${response.statusText}`
+    try {
+      const data = (await response.json()) as { error?: string }
+      if (data.error) detail = `${detail}: ${data.error}`
+    } catch { /* ignore invalid error JSON */ }
+    throw new Error(`Hevy API error: ${detail}`)
+  }
+
+  return (await response.json()) as T
+}
+
+function toWorkoutRequest(workout: Workout): WorkoutRequestBody {
+  return {
+    workout: {
+      title: workout.title,
+      description: workout.description || null,
+      start_time: workout.start_time,
+      end_time: workout.end_time,
+      exercises: workout.exercises.map((exercise: WorkoutExercise) => ({
+        exercise_template_id: exercise.exercise_template_id,
+        superset_id: exercise.superset_id ?? null,
+        notes: exercise.notes || null,
+        sets: exercise.sets.map((set: WorkoutSet) => ({
+          type: set.type,
+          weight_kg: set.weight_kg,
+          reps: set.reps,
+          distance_meters: set.distance_meters,
+          duration_seconds: set.duration_seconds,
+          rpe: set.rpe,
+        })),
+      })),
+    },
+  }
+}
+
 async function fetchAllPages<TItem>(
   basePath: string,
   extractItems: (data: unknown) => TItem[],
@@ -109,6 +188,18 @@ export async function fetchAllWorkouts(): Promise<Workout[]> {
 
 export async function fetchWorkout(id: string): Promise<Workout> {
   return apiFetch<Workout>(`/v1/workouts/${id}`)
+}
+
+export async function updateWorkout(workout: Workout): Promise<Workout> {
+  const updated = await apiMutation<Workout>(
+    `/v1/workouts/${workout.id}`,
+    'PUT',
+    toWorkoutRequest(workout),
+  )
+  cache.delete('__all_workouts__')
+  sessionStorage.removeItem(SESSION_PREFIX + '__all_workouts__')
+  setCached(`/v1/workouts/${updated.id}`, updated)
+  return updated
 }
 
 export async function fetchBodyweightEntries(): Promise<BodyweightEntry[]> {

@@ -4,7 +4,7 @@ import { format, parseISO, differenceInDays } from 'date-fns'
 import { fetchAllWorkouts } from '../api/hevy'
 import type { Workout, MuscleGroupStats } from '../types/hevy'
 import { computeMuscleHeatmapForPeriod } from '../utils/muscles'
-import { getWeeklyMuscleFrequency } from '../utils/stats'
+import { getMuscleBalance, getMuscleNeglectAlerts, getWeeklyMuscleFrequency } from '../utils/stats'
 import { FullPageSpinner } from '../components/Spinner'
 import ErrorBanner from '../components/ErrorBanner'
 import AppTooltip from '../components/Tooltip'
@@ -21,6 +21,19 @@ const MUSCLE_TARGETS: Record<string, { mev: number; mav: number }> = {
   triceps:   { mev: 6,  mav: 14 },
   core:      { mev: 4,  mav: 16 },
   cardio:    { mev: 3,  mav: 6  },
+}
+
+const MUSCLE_CATEGORY: Record<string, string> = {
+  chest: 'push', shoulders: 'push', triceps: 'push',
+  back: 'pull', biceps: 'pull',
+  legs: 'lower', core: 'core',
+}
+
+const MUSCLE_TARGET_NOTE: Record<string, string> = {
+  biceps: 'Rows and pull-ups already train biceps. Direct curls add extra work.',
+  triceps: 'Pressing already trains triceps. Direct work supplements compounds.',
+  shoulders: 'Shoulders get indirect work from chest and back exercises.',
+  core: 'Compound lifts already train core. Direct work is optional.',
 }
 
 function daysAgoColor(lastWorked: string): string {
@@ -284,6 +297,12 @@ export default function BodyHeatmap() {
 
   const muscleStats = computeMuscleHeatmapForPeriod(allWorkouts, weeks)
   const muscleFrequency = getWeeklyMuscleFrequency(allWorkouts, weeks)
+  const muscleBalance = getMuscleBalance(allWorkouts, weeks)
+  const neglectAlerts = getMuscleNeglectAlerts(allWorkouts, 7)
+  const hasMuscleHealth =
+    muscleFrequency.length > 0 ||
+    neglectAlerts.length > 0 ||
+    muscleBalance.pushSets + muscleBalance.pullSets + muscleBalance.lowerSets > 0
 
   const hoveredRegion = [...FRONT_REGIONS, ...BACK_REGIONS].find((r) => r.id === hovered)
   const hoveredMuscleKey = hovered ? REGION_TO_MUSCLE[hovered] : null
@@ -298,7 +317,7 @@ export default function BodyHeatmap() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-white">Body Heatmap</h1>
+          <h1 className="text-2xl font-bold text-white">Muscle Map</h1>
           <p className="text-sm mt-0.5" style={{ color: '#999' }}>
             Muscle activation based on training volume
           </p>
@@ -338,6 +357,123 @@ export default function BodyHeatmap() {
           </div>
         ))}
       </div>
+
+      {hasMuscleHealth && (
+        <div
+          className="rounded-lg p-5"
+          style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
+        >
+          <h2 className="text-base font-semibold text-white mb-4">Muscle Health</h2>
+
+          {muscleBalance.pushSets + muscleBalance.pullSets + muscleBalance.lowerSets > 0 &&
+            (() => {
+              const total = muscleBalance.pushSets + muscleBalance.pullSets + muscleBalance.lowerSets
+              const pushPct = Math.round((muscleBalance.pushSets / total) * 100)
+              const pullPct = Math.round((muscleBalance.pullSets / total) * 100)
+              const lowerPct = 100 - pushPct - pullPct
+              return (
+                <div className="mb-5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-xs font-medium" style={{ color: '#888' }}>
+                      Push / Pull / Lower balance ({weeks}w)
+                    </p>
+                    <AppTooltip text="Healthy ratio: roughly even push and pull work, with enough lower-body sets. This helps beginners avoid obvious gaps.">
+                      <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
+                    </AppTooltip>
+                  </div>
+                  <div className="flex rounded-full overflow-hidden h-4" style={{ backgroundColor: '#252525' }}>
+                    {pushPct > 0 && (
+                      <div className="h-full flex items-center justify-center text-xs font-medium" style={{ width: `${pushPct}%`, backgroundColor: '#e86a2e' }}>
+                        {pushPct > 15 ? `Push ${muscleBalance.pushSets}` : ''}
+                      </div>
+                    )}
+                    {pullPct > 0 && (
+                      <div className="h-full flex items-center justify-center text-xs font-medium" style={{ width: `${pullPct}%`, backgroundColor: '#60a5fa' }}>
+                        {pullPct > 15 ? `Pull ${muscleBalance.pullSets}` : ''}
+                      </div>
+                    )}
+                    {lowerPct > 0 && (
+                      <div className="h-full flex items-center justify-center text-xs font-medium" style={{ width: `${lowerPct}%`, backgroundColor: '#4ade80' }}>
+                        {lowerPct > 15 ? `Lower ${muscleBalance.lowerSets}` : ''}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-4 mt-1.5 flex-wrap">
+                    <span className="text-xs" style={{ color: '#e86a2e' }}>Push {muscleBalance.pushSets} sets</span>
+                    <span className="text-xs" style={{ color: '#60a5fa' }}>Pull {muscleBalance.pullSets} sets</span>
+                    <span className="text-xs" style={{ color: '#4ade80' }}>Lower {muscleBalance.lowerSets} sets</span>
+                  </div>
+                  {muscleBalance.warning && (
+                    <p className="text-xs mt-2" style={{ color: '#e86a2e' }}>{muscleBalance.warning}</p>
+                  )}
+                </div>
+              )
+            })()}
+
+          {neglectAlerts.length > 0 && (
+            <div className="mb-5">
+              <p className="text-xs font-medium mb-2" style={{ color: '#888' }}>Overdue</p>
+              <div className="space-y-1.5">
+                {neglectAlerts.slice(0, 3).map((alert) => (
+                  <div key={alert.muscle} className="flex items-center justify-between text-sm">
+                    <span className="capitalize text-white font-medium">{alert.muscle}</span>
+                    <span style={{ color: alert.daysSince > 14 ? '#f87171' : '#facc15' }}>
+                      {alert.daysSince}d since last trained
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {muscleFrequency.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-xs font-medium" style={{ color: '#888' }}>
+                  Frequency by muscle
+                </p>
+                <AppTooltip text="Average sets per week in the selected period. The bar fills toward each muscle's upper target.">
+                  <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
+                </AppTooltip>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {muscleFrequency.map((mf) => {
+                  const target = MUSCLE_TARGETS[mf.muscle] ?? { mev: 6, mav: 16 }
+                  const category = MUSCLE_CATEGORY[mf.muscle] ?? ''
+                  const note = MUSCLE_TARGET_NOTE[mf.muscle]
+                  const fillPct = Math.min(100, Math.round((mf.avgSetsPerWeek / target.mav) * 100))
+                  const color =
+                    mf.avgSetsPerWeek >= target.mev
+                      ? '#4ade80'
+                      : mf.avgSetsPerWeek >= target.mev * 0.5
+                      ? '#facc15'
+                      : '#f87171'
+                  const card = (
+                    <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: '#252525', border: '1px solid #333' }}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className="text-sm font-medium text-white capitalize">{mf.muscle}</p>
+                        {category && <span className="text-xs capitalize" style={{ color: '#555' }}>{category}</span>}
+                      </div>
+                      <p className="text-xs font-medium" style={{ color }}>
+                        {mf.avgSetsPerWeek} sets/wk
+                        <span style={{ color: '#555', fontWeight: 400 }}> / {target.mev}-{target.mav}</span>
+                      </p>
+                      <div className="mt-1.5 rounded-full h-1" style={{ backgroundColor: '#444' }}>
+                        <div className="h-full rounded-full transition-all" style={{ width: `${fillPct}%`, backgroundColor: color }} />
+                      </div>
+                    </div>
+                  )
+                  return note ? (
+                    <AppTooltip key={mf.muscle} text={note}>
+                      {card}
+                    </AppTooltip>
+                  ) : card
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Body diagrams — fixed 2-col layout, never reflowing */}
       <div className="grid gap-6" style={{ gridTemplateColumns: '1fr 1fr' }}>

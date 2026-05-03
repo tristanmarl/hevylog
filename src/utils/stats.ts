@@ -482,6 +482,102 @@ export interface TrainSuggestion {
   reason: string
 }
 
+export const ROUTINE_ORDER = ['Upper #1', 'Lower #1', 'Upper #2', 'Lower #2'] as const
+
+export interface NextRoutineWorkout {
+  title: string
+  routineId: string | null
+  lastTitle: string | null
+  lastRoutineId: string | null
+  lastDate: string | null
+  reason: string
+  trainedToday: boolean
+}
+
+function routineIndex(title: string): number {
+  const normalized = title.toLowerCase()
+  return ROUTINE_ORDER.findIndex((routineTitle) => normalized.includes(routineTitle.toLowerCase()))
+}
+
+function buildRoutineCycle(workouts: Workout[]): { id: string | null; title: string }[] {
+  const chronological = [...workouts].sort(
+    (a, b) => parseISO(a.start_time).getTime() - parseISO(b.start_time).getTime(),
+  )
+
+  const byTitle: Array<{ id: string | null; title: string } | null> = ROUTINE_ORDER.map(() => null)
+  for (const workout of chronological) {
+    const idx = routineIndex(workout.title)
+    if (idx !== -1) {
+      byTitle[idx] = {
+        id: workout.routine_id ?? null,
+        title: ROUTINE_ORDER[idx],
+      }
+    }
+  }
+
+  if (byTitle.some(Boolean)) {
+    return byTitle.map((slot, idx) => slot ?? { id: null, title: ROUTINE_ORDER[idx] })
+  }
+
+  const observed: { id: string; title: string }[] = []
+  for (const workout of chronological) {
+    if (!workout.routine_id) continue
+    if (observed.some((slot) => slot.id === workout.routine_id)) continue
+    observed.push({ id: workout.routine_id, title: workout.title })
+  }
+
+  if (observed.length > 0) return observed
+
+  return ROUTINE_ORDER.map((title) => ({ id: null, title }))
+}
+
+function matchesRoutineSlot(workout: Workout, slot: { id: string | null; title: string }): boolean {
+  if (slot.id && workout.routine_id) return workout.routine_id === slot.id
+  return routineIndex(workout.title) === routineIndex(slot.title)
+}
+
+export function getNextRoutineWorkout(workouts: Workout[]): NextRoutineWorkout {
+  const sorted = [...workouts].sort(
+    (a, b) => parseISO(b.start_time).getTime() - parseISO(a.start_time).getTime(),
+  )
+  const routineCycle = buildRoutineCycle(workouts)
+  const lastRoutineWorkout = sorted.find((workout) =>
+    routineCycle.some((slot) => matchesRoutineSlot(workout, slot)),
+  )
+
+  if (!lastRoutineWorkout) {
+    const firstSlot = routineCycle[0]
+    return {
+      title: firstSlot.title,
+      routineId: firstSlot.id,
+      lastTitle: null,
+      lastRoutineId: null,
+      lastDate: null,
+      reason: `Start with ${firstSlot.title}.`,
+      trainedToday: false,
+    }
+  }
+
+  const lastIndex = routineCycle.findIndex((slot) => matchesRoutineSlot(lastRoutineWorkout, slot))
+  const lastSlot = routineCycle[lastIndex]
+  const nextSlot = routineCycle[(lastIndex + 1) % routineCycle.length]
+  const lastDate = format(parseISO(lastRoutineWorkout.start_time), 'yyyy-MM-dd')
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const trainedToday = lastDate === today
+
+  return {
+    title: nextSlot.title,
+    routineId: nextSlot.id,
+    lastTitle: lastSlot.title,
+    lastRoutineId: lastRoutineWorkout.routine_id ?? lastSlot.id,
+    lastDate,
+    reason: trainedToday
+      ? `You already did ${lastSlot.title} today. Next up is ${nextSlot.title} when you are recovered.`
+      : `Last routine workout was ${lastSlot.title}. Next up is ${nextSlot.title}.`,
+    trainedToday,
+  }
+}
+
 export function getTrainTodaySuggestion(workouts: Workout[]): TrainSuggestion | null {
   if (workouts.length === 0) return { muscles: ['full body'], reason: 'Start with a full body workout to build your foundation.' }
 
@@ -657,6 +753,53 @@ export function getProgressionSuggestions(workouts: Workout[], maxCount = 4): Pr
 
       if (suggestions.length >= maxCount) break
     }
+    if (suggestions.length >= maxCount) break
+  }
+
+  return suggestions
+}
+
+export function getProgressionSuggestionsForRoutineWorkout(
+  workouts: Workout[],
+  routine: string | { title: string; routineId?: string | null },
+  maxCount = 5,
+): ProgressionSuggestion[] {
+  const routineTitle = typeof routine === 'string' ? routine : routine.title
+  const routineId = typeof routine === 'string' ? null : routine.routineId ?? null
+  const templateWorkout = workouts.find((workout) =>
+    routineId && workout.routine_id
+      ? workout.routine_id === routineId
+      : routineIndex(workout.title) === routineIndex(routineTitle),
+  )
+  if (!templateWorkout) return []
+
+  const suggestions: ProgressionSuggestion[] = []
+  const seen = new Set<string>()
+
+  for (const exercise of templateWorkout.exercises) {
+    if (seen.has(exercise.title)) continue
+    seen.add(exercise.title)
+
+    const history = getExerciseHistory(workouts, exercise.title)
+    if (history.length === 0) continue
+
+    const lastSession = history[history.length - 1]
+    if (lastSession.maxWeightKg <= 0) continue
+
+    const plateaued = detectPlateau(history, 3)
+    const increment = lastSession.maxWeightKg >= 60 ? 2.5 : 1.25
+    const suggestedWeightKg = plateaued
+      ? lastSession.maxWeightKg
+      : Math.round((lastSession.maxWeightKg + increment) * 4) / 4
+
+    suggestions.push({
+      exerciseTitle: exercise.title,
+      lastWeightKg: lastSession.maxWeightKg,
+      suggestedWeightKg,
+      isPlateaued: plateaued,
+      lastDate: lastSession.date,
+    })
+
     if (suggestions.length >= maxCount) break
   }
 

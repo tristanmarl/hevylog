@@ -89,10 +89,10 @@ function SearchIcon() {
 }
 
 const navItems: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: <BarChartIcon /> },
+  { to: '/dashboard', label: 'Overview', icon: <BarChartIcon /> },
   { to: '/workouts', label: 'Workouts', icon: <DumbbellIcon /> },
   { to: '/exercises', label: 'Exercises', icon: <ListIcon /> },
-  { to: '/body-heatmap', label: 'Body Heatmap', icon: <BodyIcon /> },
+  { to: '/body-heatmap', label: 'Muscle Map', icon: <BodyIcon /> },
   { to: '/bodyweight', label: 'Bodyweight', icon: <UserIcon /> },
 ]
 

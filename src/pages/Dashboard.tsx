@@ -2,42 +2,21 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO } from 'date-fns'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-} from 'recharts'
 import { fetchAllWorkouts } from '../api/hevy'
 import type { Workout } from '../types/hevy'
 import {
   getWeeklyStats,
-  getWeeklyWorkoutCounts,
   getPeriodStats,
-  getPeriodBarData,
-  computeWorkoutVolume,
-  computeWorkoutDuration,
-  formatDuration,
   formatVolume,
   percentChange,
   getPRsInPeriod,
-  getWeeklyMuscleFrequency,
-  detectWorkoutSplit,
-  getConsistencyStreak,
   getWeeklyGoalProgress,
-  getMuscleNeglectAlerts,
-  getMuscleBalance,
-  getTrainTodaySuggestion,
   getConsecutiveTrainingDays,
-  getMilestones,
-  getProgressionSuggestions,
+  getNextRoutineWorkout,
+  getProgressionSuggestionsForRoutineWorkout,
   estimateOneRepMax,
 } from '../utils/stats'
 import StatCard from '../components/StatCard'
-import MusclePill from '../components/MusclePill'
 import Tooltip from '../components/Tooltip'
 import { FullPageSpinner } from '../components/Spinner'
 import ErrorBanner from '../components/ErrorBanner'
@@ -51,38 +30,12 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: '365d', label: '365 Days' },
 ]
 
-const MUSCLE_CATEGORY: Record<string, string> = {
-  chest: 'push', shoulders: 'push', triceps: 'push',
-  back: 'pull', biceps: 'pull',
-  legs: 'lower', core: 'core',
-}
-
-// Minimum effective volume per week (sets). Based on Israetel/Schoenfeld research.
-// Biceps/triceps/shoulders/core are lower because compound lifts provide significant indirect stimulus.
-// Beginner note: even half these numbers produce growth in the first 6-12 months.
-const MUSCLE_MEV: Record<string, number> = {
-  back: 10,
-  chest: 8,
-  legs: 8,
-  shoulders: 6,
-  biceps: 6,
-  triceps: 6,
-  core: 4,
-}
-
-const MUSCLE_MEV_NOTE: Record<string, string> = {
-  biceps: 'Gets ~60% stimulus from rows & pull-ups. Direct curls supplement, not replace.',
-  triceps: 'Gets ~60% stimulus from pressing movements. Direct work supplements compounds.',
-  shoulders: 'Gets substantial indirect work from chest and back exercises.',
-  core: 'Heavily stimulated by all compound lifts (squats, deadlifts, rows). Very little direct work needed.',
-}
-
 const VOLUME_REFS = [
-  { emoji: '🚗', singular: 'car',        plural: 'cars',        kg: 1_500  },
-  { emoji: '🐘', singular: 'elephant',   plural: 'elephants',   kg: 5_000  },
-  { emoji: '🚌', singular: 'bus',        plural: 'buses',       kg: 12_000 },
-  { emoji: '✈️', singular: 'plane',      plural: 'planes',      kg: 70_000 },
-  { emoji: '🐋', singular: 'blue whale', plural: 'blue whales', kg: 150_000 },
+  { icon: '🚗', singular: 'car', plural: 'cars', kg: 1_500 },
+  { icon: '🐘', singular: 'elephant', plural: 'elephants', kg: 5_000 },
+  { icon: '🚌', singular: 'bus', plural: 'buses', kg: 12_000 },
+  { icon: '✈️', singular: 'plane', plural: 'planes', kg: 70_000 },
+  { icon: '🐋', singular: 'blue whale', plural: 'blue whales', kg: 150_000 },
 ]
 
 function volumeContext(kg: number): string | null {
@@ -91,23 +44,12 @@ function volumeContext(kg: number): string | null {
     const ratio = kg / ref.kg
     if (ratio < 8) {
       const n = Math.round(ratio * 10) / 10
-      return `≈ ${n} ${ref.emoji} ${n === 1 ? ref.singular : ref.plural}`
+      return `about ${n} ${ref.icon} ${n === 1 ? ref.singular : ref.plural}`
     }
   }
   const last = VOLUME_REFS[VOLUME_REFS.length - 1]
   const n = Math.round((kg / last.kg) * 10) / 10
-  return `≈ ${n} ${last.emoji} ${last.plural}`
-}
-
-const SPLIT_TIPS: Record<string, string> = {
-  'Full Body': 'Great for beginners — trains all muscles each session.',
-  'Upper / Lower': 'Splits training into upper body days and lower body days.',
-  'Push / Pull / Legs': 'Push (chest/shoulders/triceps), Pull (back/biceps), and Legs on separate days.',
-  'Bro Split': 'One muscle group per day. Works, but beginners often progress faster with Full Body or Upper/Lower.',
-}
-
-const WORKOUT_MILESTONE_TARGETS: Record<string, number> = {
-  first: 1, w10: 10, w25: 25, w50: 50, w100: 100, w200: 200,
+  return `about ${n} ${last.icon} ${last.plural}`
 }
 
 export default function Dashboard() {
@@ -153,14 +95,7 @@ export default function Dashboard() {
   const current = isWeek ? getWeeklyStats(workouts, 0) : getPeriodStats(workouts, periodDays, 0)
   const previous = isWeek ? getWeeklyStats(workouts, 1) : getPeriodStats(workouts, periodDays, 1)
 
-  const barData = isWeek
-    ? getWeeklyWorkoutCounts(workouts, 12).map((d) => ({ label: d.weekLabel, count: d.count }))
-    : getPeriodBarData(workouts, period === '30d' ? 7 : period === '90d' ? 14 : 30, 12)
-
-  const recentWorkouts = workouts.slice(0, 3)
-
   const volumeChange = percentChange(current.totalVolumeKg, previous.totalVolumeKg)
-  const durationChange = percentChange(current.durationMinutes, previous.durationMinutes)
   const countChange = percentChange(current.workoutCount, previous.workoutCount)
 
   function trendDir(val: number | null): 'up' | 'down' | 'neutral' {
@@ -176,130 +111,27 @@ export default function Dashboard() {
   const periodLabel = isWeek ? 'this week' : `last ${period}`
   const compLabel = isWeek ? 'vs last week' : `vs prev ${period}`
 
-  const chartTitle = isWeek
-    ? 'Workouts per week (last 12 weeks)'
-    : period === '30d' ? 'Workouts per week (last 12 weeks)'
-    : period === '90d' ? 'Workouts per fortnight (last 24 weeks)'
-    : 'Workouts per month (last 12 months)'
-
   const prs = getPRsInPeriod(workouts, periodDays)
-  const muscleFrequency = getWeeklyMuscleFrequency(workouts, isWeek ? 1 : periodDays / 7)
-  const split = detectWorkoutSplit(workouts)
-  const streak = getConsistencyStreak(workouts)
   const weeklyGoalProgress = getWeeklyGoalProgress(workouts, weeklyGoal)
-  const neglectAlerts = getMuscleNeglectAlerts(workouts, 7)
-  const muscleBalance = getMuscleBalance(workouts, 4)
-  const trainSuggestion = getTrainTodaySuggestion(workouts)
   const consecutiveDays = getConsecutiveTrainingDays(workouts)
-  const milestones = getMilestones(workouts)
-  const progressionSuggestions = getProgressionSuggestions(workouts, 4)
-
-  const nextMilestone = milestones.find((m) => !m.achieved)
-  const achievedCount = milestones.filter((m) => m.achieved).length
-
-  const hasMuscleData =
-    muscleFrequency.length > 0 ||
-    neglectAlerts.length > 0 ||
-    muscleBalance.pushSets + muscleBalance.pullSets + muscleBalance.lowerSets > 0
+  const nextRoutineWorkout = getNextRoutineWorkout(workouts)
+  const progressionSuggestions = getProgressionSuggestionsForRoutineWorkout(
+    workouts,
+    { title: nextRoutineWorkout.title, routineId: nextRoutineWorkout.routineId },
+    5,
+  )
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-            {split !== 'Unknown' && (
-              <Tooltip text={SPLIT_TIPS[split] ?? split}>
-                <span
-                  className="text-xs px-2 py-0.5 rounded cursor-default"
-                  style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a', color: '#666' }}
-                >
-                  {split}
-                </span>
-              </Tooltip>
-            )}
-          </div>
+          <h1 className="text-2xl font-bold text-white">Overview</h1>
           <p className="text-sm mt-1" style={{ color: '#999' }}>
-            {isWeek
-              ? (current as ReturnType<typeof getWeeklyStats>).weekLabel
-              : (current as ReturnType<typeof getPeriodStats>).label}
+            What to focus on for your next gym session
           </p>
         </div>
-        <div
-          className="flex items-center rounded-lg overflow-hidden"
-          style={{ border: '1px solid #333', backgroundColor: '#1a1a1a' }}
-        >
-          {PERIODS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => handlePeriodChange(key)}
-              className="px-3 py-2 text-sm font-medium transition-colors"
-              style={{
-                backgroundColor: period === key ? '#e86a2e' : 'transparent',
-                color: period === key ? '#fff' : '#888',
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          {
-            title: 'Workouts',
-            value: current.workoutCount,
-            trend: trendDir(countChange),
-            trendValue: trendLabel(countChange),
-          },
-          {
-            title: 'Volume',
-            hint: 'Total weight moved: sets × reps × weight across all exercises. Trending up over time means you\'re getting stronger.',
-            value: formatVolume(current.totalVolumeKg),
-            note: volumeContext(current.totalVolumeKg) ?? undefined,
-            trend: trendDir(volumeChange),
-            trendValue: trendLabel(volumeChange),
-          },
-          {
-            title: 'Duration',
-            value: formatDuration(current.durationMinutes),
-            trend: trendDir(durationChange),
-            trendValue: trendLabel(durationChange),
-          },
-        ].map((card) => (
-          <div
-            key={card.title}
-            className="cursor-pointer rounded-lg transition-all"
-            onClick={() => navigate('/workouts')}
-            onMouseEnter={(e) => {
-              ;(e.currentTarget.firstChild as HTMLElement | null)?.setAttribute(
-                'style',
-                'background-color: #1a1a1a; border-color: #e86a2e',
-              )
-            }}
-            onMouseLeave={(e) => {
-              ;(e.currentTarget.firstChild as HTMLElement | null)?.setAttribute(
-                'style',
-                'background-color: #1a1a1a; border-color: #2a2a2a',
-              )
-            }}
-          >
-            <StatCard
-              title={card.title}
-              hint={card.hint}
-              value={card.value}
-              note={card.note}
-              subtitle={periodLabel}
-              trend={card.trend}
-              trendValue={card.trendValue}
-              secondaryLabel={compLabel}
-            />
-          </div>
-        ))}
       </div>
 
       {/* Overtraining alert */}
@@ -325,49 +157,82 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Train Today suggestion */}
-      {trainSuggestion && (
-        <div
-          className="rounded-lg p-5"
-          style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
-        >
-          <h2 className="text-base font-semibold text-white mb-3">Train Today?</h2>
-          <div className="flex items-start gap-4 flex-wrap">
-            <div className="flex flex-wrap gap-2">
-              {trainSuggestion.muscles[0] === 'rest' ? (
-                <span
-                  className="text-sm px-3 py-1 rounded-full font-medium"
-                  style={{
-                    backgroundColor: 'rgba(250,204,21,0.15)',
-                    color: '#facc15',
-                    border: '1px solid rgba(250,204,21,0.3)',
-                  }}
-                >
-                  Rest Day Recommended
-                </span>
-              ) : (
-                trainSuggestion.muscles.map((m) => (
-                  <span
-                    key={m}
-                    className="text-sm px-3 py-1 rounded-full font-medium capitalize"
-                    style={{
-                      backgroundColor: 'rgba(232,106,46,0.15)',
-                      color: '#e86a2e',
-                      border: '1px solid rgba(232,106,46,0.3)',
-                    }}
-                  >
-                    {m}
-                  </span>
-                ))
-              )}
-            </div>
-            <p className="text-sm" style={{ color: '#888' }}>{trainSuggestion.reason}</p>
+      {/* Next workout */}
+      <div
+        className="rounded-lg p-5"
+        style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
+      >
+        <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
+          <div>
+            <p className="text-xs uppercase tracking-wider" style={{ color: '#777' }}>Next Workout</p>
+            <h2 className="text-xl font-semibold text-white mt-1">{nextRoutineWorkout.title}</h2>
           </div>
+          {nextRoutineWorkout.trainedToday && (
+            <span
+              className="text-xs px-2.5 py-1 rounded-full font-medium"
+              style={{
+                backgroundColor: 'rgba(250,204,21,0.15)',
+                color: '#facc15',
+                border: '1px solid rgba(250,204,21,0.3)',
+              }}
+            >
+              Rest first
+            </span>
+          )}
         </div>
-      )}
+        <p className="text-sm mb-4" style={{ color: '#888' }}>{nextRoutineWorkout.reason}</p>
 
-      {/* Weekly Goal + Streak */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {progressionSuggestions.length > 0 ? (
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-sm font-semibold text-white">Weight targets</h3>
+              <Tooltip text="These targets use exercises from the next routine workout only, so they match the workout shown above.">
+                <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
+              </Tooltip>
+            </div>
+            <div className="space-y-2.5">
+              {progressionSuggestions.map((s) => (
+                <div key={s.exerciseTitle} className="flex items-center justify-between text-sm">
+                  <span className="text-white font-medium truncate flex-1 min-w-0 mr-4">
+                    {s.exerciseTitle}
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span style={{ color: '#555' }}>{s.lastWeightKg} kg</span>
+                    {s.isPlateaued ? (
+                      <Tooltip text="Same weight for 3+ sessions. Try changing the rep range, or take a lighter week.">
+                        <span
+                          className="text-xs px-2 py-0.5 rounded cursor-default"
+                          style={{
+                            backgroundColor: 'rgba(250,204,21,0.1)',
+                            color: '#facc15',
+                            border: '1px solid rgba(250,204,21,0.2)',
+                          }}
+                        >
+                          plateau
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      <>
+                        <span style={{ color: '#444' }}>→</span>
+                        <span className="font-semibold" style={{ color: '#4ade80' }}>
+                          try {s.suggestedWeightKg} kg
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm" style={{ color: '#666' }}>
+            No previous {nextRoutineWorkout.title} logged yet, so there are no weight targets for this slot.
+          </p>
+        )}
+      </div>
+
+      <div>
+        {/* Weekly Goal */}
         <div
           className="rounded-lg p-5"
           style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
@@ -414,74 +279,87 @@ export default function Dashboard() {
             </p>
           )}
         </div>
-
-        <div
-          className="rounded-lg p-5 flex flex-col justify-center"
-          style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
-        >
-          <p className="text-4xl font-bold" style={{ color: streak >= 4 ? '#e86a2e' : '#fff' }}>
-            {streak}
-          </p>
-          <p className="text-sm font-semibold text-white mt-1">Week Streak</p>
-          <p className="text-xs mt-0.5" style={{ color: '#666' }}>consecutive weeks training</p>
-        </div>
       </div>
 
-      {/* Recent Workouts */}
-      {recentWorkouts.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-white">Recent Workouts</h2>
-            <button
-              onClick={() => navigate('/workouts')}
-              className="text-xs"
-              style={{ color: '#e86a2e' }}
-            >
-              View all →
-            </button>
+      {/* Progress */}
+      <div>
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div>
+            <h2 className="text-base font-semibold text-white">Progress</h2>
+            <p className="text-xs mt-0.5" style={{ color: '#666' }}>
+              {isWeek
+                ? (current as ReturnType<typeof getWeeklyStats>).weekLabel
+                : (current as ReturnType<typeof getPeriodStats>).label}
+            </p>
           </div>
-          <div className="space-y-2">
-            {recentWorkouts.map((workout) => {
-              const duration = computeWorkoutDuration(workout)
-              const volume = computeWorkoutVolume(workout)
-              const muscles = Array.from(new Set(workout.exercises.flatMap((e) => e.muscle_groups ?? [])))
-              return (
-                <button
-                  key={workout.id}
-                  onClick={() => navigate(`/workouts/${workout.id}`)}
-                  className="w-full text-left rounded-lg p-4 transition-colors"
-                  style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = '#222'
-                    e.currentTarget.style.borderColor = '#333'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = '#1a1a1a'
-                    e.currentTarget.style.borderColor = '#2a2a2a'
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{workout.title}</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#666' }}>
-                        {format(parseISO(workout.start_time), 'EEE, MMM d yyyy')} &middot;{' '}
-                        {formatDuration(duration)} &middot; {formatVolume(volume)}
-                      </p>
-                    </div>
-                    {muscles.length > 0 && (
-                      <div className="flex flex-wrap gap-1 justify-end shrink-0">
-                        {muscles.slice(0, 3).map((m) => (
-                          <MusclePill key={m} muscle={m} small />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              )
-            })}
+          <div
+            className="flex items-center rounded-lg overflow-hidden"
+            style={{ border: '1px solid #333', backgroundColor: '#1a1a1a' }}
+          >
+            {PERIODS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => handlePeriodChange(key)}
+                className="px-3 py-2 text-sm font-medium transition-colors"
+                style={{
+                  backgroundColor: period === key ? '#e86a2e' : 'transparent',
+                  color: period === key ? '#fff' : '#888',
+                }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
-      )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[
+            {
+              title: 'Workouts',
+              value: current.workoutCount,
+              trend: trendDir(countChange),
+              trendValue: trendLabel(countChange),
+            },
+            {
+              title: 'Volume',
+              hint: 'Total weight moved: sets x reps x weight across all exercises. Trending up over time means you are getting stronger.',
+              value: formatVolume(current.totalVolumeKg),
+              note: volumeContext(current.totalVolumeKg) ?? undefined,
+              trend: trendDir(volumeChange),
+              trendValue: trendLabel(volumeChange),
+            },
+          ].map((card) => (
+            <div
+              key={card.title}
+              className="cursor-pointer rounded-lg transition-all"
+              onClick={() => navigate('/workouts')}
+              onMouseEnter={(e) => {
+                ;(e.currentTarget.firstChild as HTMLElement | null)?.setAttribute(
+                  'style',
+                  'background-color: #1a1a1a; border-color: #e86a2e',
+                )
+              }}
+              onMouseLeave={(e) => {
+                ;(e.currentTarget.firstChild as HTMLElement | null)?.setAttribute(
+                  'style',
+                  'background-color: #1a1a1a; border-color: #2a2a2a',
+                )
+              }}
+            >
+              <StatCard
+                title={card.title}
+                hint={card.hint}
+                value={card.value}
+                note={card.note}
+                subtitle={periodLabel}
+                trend={card.trend}
+                trendValue={card.trendValue}
+                secondaryLabel={compLabel}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* PRs with 1RM estimate */}
       {prs.length > 0 && (
@@ -536,285 +414,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Next Session — progressive overload suggestions */}
-      {progressionSuggestions.length > 0 && (
-        <div
-          className="rounded-lg p-5"
-          style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-base font-semibold text-white">Next Session</h2>
-            <Tooltip text="Progressive overload: adding a little more weight each session is the #1 driver of getting stronger. Try the suggested weight — if it feels easy, go heavier.">
-              <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
-            </Tooltip>
-          </div>
-          <div className="space-y-2.5">
-            {progressionSuggestions.map((s) => (
-              <div key={s.exerciseTitle} className="flex items-center justify-between text-sm">
-                <span className="text-white font-medium truncate flex-1 min-w-0 mr-4">
-                  {s.exerciseTitle}
-                </span>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span style={{ color: '#555' }}>{s.lastWeightKg} kg</span>
-                  {s.isPlateaued ? (
-                    <Tooltip text="Same weight for 3+ sessions. Try changing the rep range (e.g. 3×5 instead of 3×8) or take a deload week with lighter weight.">
-                      <span
-                        className="text-xs px-2 py-0.5 rounded cursor-default"
-                        style={{
-                          backgroundColor: 'rgba(250,204,21,0.1)',
-                          color: '#facc15',
-                          border: '1px solid rgba(250,204,21,0.2)',
-                        }}
-                      >
-                        plateau
-                      </span>
-                    </Tooltip>
-                  ) : (
-                    <>
-                      <span style={{ color: '#444' }}>→</span>
-                      <span className="font-semibold" style={{ color: '#4ade80' }}>
-                        try {s.suggestedWeightKg} kg
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Muscle Health — consolidated */}
-      {hasMuscleData && (
-        <div
-          className="rounded-lg p-5"
-          style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
-        >
-          <h2 className="text-base font-semibold text-white mb-4">Muscle Health</h2>
-
-          {/* Push / Pull / Lower balance */}
-          {muscleBalance.pushSets + muscleBalance.pullSets + muscleBalance.lowerSets > 0 &&
-            (() => {
-              const total =
-                muscleBalance.pushSets + muscleBalance.pullSets + muscleBalance.lowerSets
-              const pushPct = Math.round((muscleBalance.pushSets / total) * 100)
-              const pullPct = Math.round((muscleBalance.pullSets / total) * 100)
-              const lowerPct = 100 - pushPct - pullPct
-              return (
-                <div className="mb-5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <p className="text-xs font-medium" style={{ color: '#888' }}>
-                      Push / Pull / Lower balance (last 4 weeks)
-                    </p>
-                    <Tooltip text="Healthy ratio: ~1:1 push-to-pull sets (or slightly more pull). Pull work is often undertrained. Imbalances accumulate slowly and cause shoulder issues. Legs are separate — aim for at least 25% of your total sets.">
-                      <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
-                    </Tooltip>
-                  </div>
-                  <div
-                    className="flex rounded-full overflow-hidden h-4"
-                    style={{ backgroundColor: '#252525' }}
-                  >
-                    {pushPct > 0 && (
-                      <div
-                        className="h-full flex items-center justify-center text-xs font-medium"
-                        style={{
-                          width: `${pushPct}%`,
-                          backgroundColor: '#e86a2e',
-                          minWidth: pushPct > 15 ? undefined : 0,
-                        }}
-                      >
-                        {pushPct > 15 ? `Push ${muscleBalance.pushSets}` : ''}
-                      </div>
-                    )}
-                    {pullPct > 0 && (
-                      <div
-                        className="h-full flex items-center justify-center text-xs font-medium"
-                        style={{
-                          width: `${pullPct}%`,
-                          backgroundColor: '#60a5fa',
-                          minWidth: pullPct > 15 ? undefined : 0,
-                        }}
-                      >
-                        {pullPct > 15 ? `Pull ${muscleBalance.pullSets}` : ''}
-                      </div>
-                    )}
-                    {lowerPct > 0 && (
-                      <div
-                        className="h-full flex items-center justify-center text-xs font-medium"
-                        style={{
-                          width: `${lowerPct}%`,
-                          backgroundColor: '#4ade80',
-                          minWidth: lowerPct > 15 ? undefined : 0,
-                        }}
-                      >
-                        {lowerPct > 15 ? `Lower ${muscleBalance.lowerSets}` : ''}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex gap-4 mt-1.5">
-                    <span className="text-xs" style={{ color: '#e86a2e' }}>
-                      Push {muscleBalance.pushSets} sets
-                    </span>
-                    <span className="text-xs" style={{ color: '#60a5fa' }}>
-                      Pull {muscleBalance.pullSets} sets
-                    </span>
-                    <span className="text-xs" style={{ color: '#4ade80' }}>
-                      Lower {muscleBalance.lowerSets} sets
-                    </span>
-                  </div>
-                  {muscleBalance.warning && (
-                    <p className="text-xs mt-2" style={{ color: '#e86a2e' }}>
-                      {muscleBalance.warning}
-                    </p>
-                  )}
-                </div>
-              )
-            })()}
-
-          {/* Overdue muscles */}
-          {neglectAlerts.length > 0 && (
-            <div className="mb-5">
-              <p className="text-xs font-medium mb-2" style={{ color: '#888' }}>Overdue</p>
-              <div className="space-y-1.5">
-                {neglectAlerts.slice(0, 2).map((alert) => (
-                  <div
-                    key={alert.muscle}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span className="capitalize text-white font-medium">{alert.muscle}</span>
-                    <span
-                      style={{ color: alert.daysSince > 14 ? '#f87171' : '#facc15' }}
-                    >
-                      {alert.daysSince}d since last trained
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Frequency grid with target progress bars */}
-          {muscleFrequency.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <p className="text-xs font-medium" style={{ color: '#888' }}>
-                  Sets per week by muscle
-                </p>
-                <Tooltip text="Minimum effective volume varies by muscle. Biceps/triceps/core need less direct work because compound lifts already stimulate them heavily. Bar fills to each muscle's MEV (minimum effective volume).">
-                  <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
-                </Tooltip>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                {muscleFrequency.map((mf) => {
-                  const category = MUSCLE_CATEGORY[mf.muscle] ?? ''
-                  const mev = MUSCLE_MEV[mf.muscle] ?? 8
-                  const note = MUSCLE_MEV_NOTE[mf.muscle]
-                  const barColor =
-                    mf.avgSetsPerWeek >= mev
-                      ? '#4ade80'
-                      : mf.avgSetsPerWeek >= mev * 0.5
-                      ? '#facc15'
-                      : '#f87171'
-                  const targetPct = Math.min(1, mf.avgSetsPerWeek / mev)
-                  const card = (
-                    <div
-                      className="rounded-lg px-3 py-2.5"
-                      style={{ backgroundColor: '#252525', border: '1px solid #333' }}
-                    >
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className="text-sm font-medium text-white capitalize">{mf.muscle}</p>
-                        {category && (
-                          <span className="text-xs capitalize" style={{ color: '#555' }}>
-                            {category}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs font-medium" style={{ color: barColor }}>
-                        {mf.avgSetsPerWeek} sets/wk
-                        <span style={{ color: '#555', fontWeight: 400 }}> / {mev} target</span>
-                      </p>
-                      <div
-                        className="mt-1.5 rounded-full h-1"
-                        style={{ backgroundColor: '#444' }}
-                      >
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{ width: `${targetPct * 100}%`, backgroundColor: barColor }}
-                        />
-                      </div>
-                    </div>
-                  )
-                  return note ? (
-                    <Tooltip key={mf.muscle} text={note}>
-                      {card}
-                    </Tooltip>
-                  ) : card
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Activity chart — workouts over time */}
-      <div
-        className="rounded-lg p-5"
-        style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
-      >
-        <h2 className="text-base font-semibold text-white mb-4">{chartTitle}</h2>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={barData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
-            <XAxis
-              dataKey="label"
-              tick={{ fill: '#666', fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis
-              tick={{ fill: '#666', fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-              allowDecimals={false}
-            />
-            <RechartsTooltip
-              contentStyle={{
-                backgroundColor: '#252525',
-                border: '1px solid #333',
-                borderRadius: '8px',
-                color: '#fff',
-              }}
-              cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-            />
-            <Bar dataKey="count" fill="#e86a2e" radius={[4, 4, 0, 0]} name="Workouts" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Milestone teaser */}
-      {nextMilestone && (
-        <div
-          className="rounded-lg p-4 flex items-center justify-between"
-          style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
-        >
-          <div className="flex items-center gap-3">
-            <span style={{ fontSize: 20 }}>🏆</span>
-            <div>
-              <p className="text-sm font-medium text-white">Next: {nextMilestone.label}</p>
-              {WORKOUT_MILESTONE_TARGETS[nextMilestone.id] != null && (
-                <p className="text-xs" style={{ color: '#666' }}>
-                  {WORKOUT_MILESTONE_TARGETS[nextMilestone.id] - workouts.length} workout
-                  {WORKOUT_MILESTONE_TARGETS[nextMilestone.id] - workouts.length !== 1 ? 's' : ''}{' '}
-                  away
-                </p>
-              )}
-            </div>
-          </div>
-          <p className="text-xs" style={{ color: '#555' }}>
-            {achievedCount}/{milestones.length} achieved
-          </p>
-        </div>
-      )}
     </div>
   )
 }
