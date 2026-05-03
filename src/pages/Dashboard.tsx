@@ -290,6 +290,7 @@ export default function Dashboard() {
               title={card.title}
               hint={card.hint}
               value={card.value}
+              note={card.note}
               subtitle={periodLabel}
               trend={card.trend}
               trendValue={card.trendValue}
