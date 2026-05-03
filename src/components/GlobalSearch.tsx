@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import type { Workout } from '../types/hevy'
+import type { Workout } from '../types/workout'
 import { getMuscleGroupsForExercise } from '../utils/muscles'
 import MusclePill from './MusclePill'
 
@@ -35,48 +35,52 @@ export default function GlobalSearch({ workouts, onClose }: Props) {
     inputRef.current?.focus()
   }, [])
 
-  // Build exercise list from workouts
-  const exerciseMap = new Map<string, string[]>()
-  for (const w of workouts) {
-    for (const e of w.exercises) {
-      if (!exerciseMap.has(e.title)) {
-        exerciseMap.set(e.title, getMuscleGroupsForExercise(e.title, e.muscle_groups).filter((m) => m !== 'other'))
+  const q = query.trim().toLowerCase()
+  const { workoutResults, exerciseResults, allResults } = useMemo(() => {
+    const exerciseMap = new Map<string, string[]>()
+    for (const w of workouts) {
+      for (const e of w.exercises) {
+        if (!exerciseMap.has(e.title)) {
+          exerciseMap.set(e.title, getMuscleGroupsForExercise(e.title, e.muscle_groups).filter((m) => m !== 'other'))
+        }
       }
     }
-  }
 
-  const q = query.trim().toLowerCase()
+    const workoutResults: WorkoutResult[] = q
+      ? workouts
+          .filter((w) => {
+            const dateStr = format(parseISO(w.start_time), 'MMM d yyyy').toLowerCase()
+            return w.title.toLowerCase().includes(q) || dateStr.includes(q)
+          })
+          .slice(0, 5)
+          .map((w) => ({
+            type: 'workout',
+            id: w.id,
+            title: w.title,
+            date: format(parseISO(w.start_time), 'MMM d yyyy'),
+          }))
+      : []
 
-  const workoutResults: WorkoutResult[] = q
-    ? workouts
-        .filter((w) => {
-          const dateStr = format(parseISO(w.start_time), 'MMM d yyyy').toLowerCase()
-          return w.title.toLowerCase().includes(q) || dateStr.includes(q)
-        })
-        .slice(0, 5)
-        .map((w) => ({
-          type: 'workout',
-          id: w.id,
-          title: w.title,
-          date: format(parseISO(w.start_time), 'MMM d yyyy'),
-        }))
-    : []
+    const exerciseResults: ExerciseResult[] = q
+      ? Array.from(exerciseMap.entries())
+          .filter(([title]) => title.toLowerCase().includes(q))
+          .slice(0, 5)
+          .map(([title, muscles]) => ({ type: 'exercise', title, muscles }))
+      : []
 
-  const exerciseResults: ExerciseResult[] = q
-    ? Array.from(exerciseMap.entries())
-        .filter(([title]) => title.toLowerCase().includes(q))
-        .slice(0, 5)
-        .map(([title, muscles]) => ({ type: 'exercise', title, muscles }))
-    : []
-
-  const allResults: SearchResult[] = [...workoutResults, ...exerciseResults]
+    return {
+      workoutResults,
+      exerciseResults,
+      allResults: [...workoutResults, ...exerciseResults] as SearchResult[],
+    }
+  }, [q, workouts])
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
       if (result.type === 'workout') {
         navigate(`/workouts/${result.id}`)
       } else {
-        navigate('/exercises')
+        navigate(`/exercises?exercise=${encodeURIComponent(result.title)}`)
       }
       onClose()
     },

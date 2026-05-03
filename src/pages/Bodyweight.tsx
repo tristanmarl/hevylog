@@ -11,8 +11,8 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts'
-import { fetchBodyweightEntries } from '../api/hevy'
-import type { BodyweightEntry } from '../types/hevy'
+import { DATA_SOURCE_LABELS, fetchBodyweightEntries } from '../api/dataSource'
+import type { BodyweightEntry } from '../types/workout'
 import StatCard from '../components/StatCard'
 import { FullPageSpinner } from '../components/Spinner'
 import ErrorBanner from '../components/ErrorBanner'
@@ -29,7 +29,7 @@ function unitLabel(unit: Unit): string {
 }
 
 export default function Bodyweight() {
-  const { version } = useDataVersion()
+  const { source, version } = useDataVersion()
   const [entries, setEntries] = useState<BodyweightEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -40,18 +40,18 @@ export default function Bodyweight() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchBodyweightEntries()
+      const data = await fetchBodyweightEntries(source)
       setEntries(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load bodyweight data')
     } finally {
       setLoading(false)
     }
-  }, [version])
+  }, [source])
 
   useEffect(() => {
     load()
-  }, [load])
+  }, [load, version])
 
   if (loading) return <FullPageSpinner />
   if (error) return <ErrorBanner message={error} onRetry={load} />
@@ -61,7 +61,11 @@ export default function Bodyweight() {
       <div className="flex items-center justify-center min-h-[60vh]" style={{ color: '#555' }}>
         <div className="text-center">
           <p className="text-lg">No bodyweight data found</p>
-          <p className="text-sm mt-1">Log your weight in the Hevy app to see it here.</p>
+          <p className="text-sm mt-1">
+            {source === 'hevy'
+              ? 'Log your weight in the Hevy app to see it here.'
+              : `${DATA_SOURCE_LABELS[source]} bodyweight entries are not included in the workout history sync yet.`}
+          </p>
         </div>
       </div>
     )

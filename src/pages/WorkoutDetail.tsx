@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO } from 'date-fns'
-import { fetchWorkout, fetchAllWorkouts, updateWorkout } from '../api/hevy'
-import type { Workout, WorkoutSet } from '../types/hevy'
+import { fetchAllWorkouts, fetchWorkout, updateWorkout } from '../api/dataSource'
+import type { Workout, WorkoutSet } from '../types/workout'
 import {
   computeWorkoutVolume,
   computeWorkoutDuration,
@@ -86,7 +86,7 @@ function reindexWorkout(workout: Workout): Workout {
 export default function WorkoutDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { version, refresh } = useDataVersion()
+  const { source, version, refresh } = useDataVersion()
   const [workout, setWorkout] = useState<Workout | null>(null)
   const [allWorkouts, setAllWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
@@ -102,8 +102,8 @@ export default function WorkoutDetail() {
     setError(null)
     try {
       const [w, all] = await Promise.all([
-        fetchWorkout(id),
-        fetchAllWorkouts(),
+        fetchWorkout(source, id),
+        fetchAllWorkouts(source),
       ])
       setWorkout(w)
       setAllWorkouts(all)
@@ -112,11 +112,11 @@ export default function WorkoutDetail() {
     } finally {
       setLoading(false)
     }
-  }, [id, version])
+  }, [id, source])
 
   useEffect(() => {
     load()
-  }, [load])
+  }, [load, version])
 
   if (loading) return <FullPageSpinner />
   if (error) return <ErrorBanner message={error} onRetry={load} />
@@ -140,7 +140,7 @@ export default function WorkoutDetail() {
     setSaving(true)
     setSaveError(null)
     try {
-      const updated = await updateWorkout(normalized)
+      const updated = await updateWorkout(source, normalized)
       setWorkout(updated)
       setEditingWorkout(null)
       refresh()
@@ -211,12 +211,13 @@ export default function WorkoutDetail() {
               onClick={() => {
                 setSaveError(null)
                 setDeleteNotice(false)
-                setEditingWorkout(structuredClone(workout))
+                if (source === 'hevy') setEditingWorkout(structuredClone(workout))
+                else setDeleteNotice(true)
               }}
               className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
               style={{ backgroundColor: '#252525', border: '1px solid #333', color: '#fff' }}
             >
-              Edit
+              {source === 'hevy' ? 'Edit' : 'Edit in Liftosaur'}
             </button>
             <button
               onClick={() => {
@@ -224,9 +225,9 @@ export default function WorkoutDetail() {
                 setDeleteNotice(true)
               }}
               className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-              style={{ backgroundColor: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.35)', color: '#f87171' }}
+              style={{ backgroundColor: '#252525', border: '1px solid #333', color: '#ddd' }}
             >
-              Delete
+              Delete in Hevy
             </button>
           </div>
         </div>
@@ -259,7 +260,9 @@ export default function WorkoutDetail() {
             className="mt-4 rounded-lg p-3 text-sm"
             style={{ backgroundColor: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', color: '#fca5a5' }}
           >
-            Hevy’s public API currently does not expose a workout delete endpoint. Delete this workout in the Hevy app, then refresh Hevylog.
+              {source === 'hevy'
+                ? "LiftLog can edit workouts, but Hevy’s public API does not expose deletion. Delete this workout in the Hevy app, then refresh LiftLog."
+                : 'Liftosaur history is read-only here. Edit this workout in Liftosaur, then sync Liftosaur history again.'}
           </div>
         )}
       </div>

@@ -9,7 +9,7 @@ import {
   differenceInMinutes,
   differenceInDays,
 } from 'date-fns'
-import type { Workout, WorkoutSet } from '../types/hevy'
+import type { Workout, WorkoutSet } from '../types/workout'
 import { getMuscleGroupsForExercise } from './muscles'
 
 export interface WeeklyStats {
@@ -494,9 +494,13 @@ export interface NextRoutineWorkout {
   trainedToday: boolean
 }
 
+function normalizeRoutineTitle(title: string): string {
+  return title.toLowerCase().replace(/\s*#/g, '#')
+}
+
 function routineIndex(title: string): number {
-  const normalized = title.toLowerCase()
-  return ROUTINE_ORDER.findIndex((routineTitle) => normalized.includes(routineTitle.toLowerCase()))
+  const normalized = normalizeRoutineTitle(title)
+  return ROUTINE_ORDER.findIndex((routineTitle) => normalized.includes(normalizeRoutineTitle(routineTitle)))
 }
 
 function buildRoutineCycle(workouts: Workout[]): { id: string | null; title: string }[] {
@@ -522,7 +526,7 @@ function buildRoutineCycle(workouts: Workout[]): { id: string | null; title: str
   const observed: { id: string; title: string }[] = []
   for (const workout of chronological) {
     if (!workout.routine_id) continue
-    if (observed.some((slot) => slot.id === workout.routine_id)) continue
+    if (observed.some((slot) => slot.id === workout.routine_id && slot.title === workout.title)) continue
     observed.push({ id: workout.routine_id, title: workout.title })
   }
 
@@ -532,7 +536,10 @@ function buildRoutineCycle(workouts: Workout[]): { id: string | null; title: str
 }
 
 function matchesRoutineSlot(workout: Workout, slot: { id: string | null; title: string }): boolean {
-  if (slot.id && workout.routine_id) return workout.routine_id === slot.id
+  if (slot.id && workout.routine_id) {
+    if (workout.routine_id !== slot.id) return false
+    return workout.title === slot.title || routineIndex(workout.title) === routineIndex(slot.title)
+  }
   return routineIndex(workout.title) === routineIndex(slot.title)
 }
 
@@ -768,7 +775,8 @@ export function getProgressionSuggestionsForRoutineWorkout(
   const routineId = typeof routine === 'string' ? null : routine.routineId ?? null
   const templateWorkout = workouts.find((workout) =>
     routineId && workout.routine_id
-      ? workout.routine_id === routineId
+      ? workout.routine_id === routineId &&
+        (workout.title === routineTitle || routineIndex(workout.title) === routineIndex(routineTitle))
       : routineIndex(workout.title) === routineIndex(routineTitle),
   )
   if (!templateWorkout) return []

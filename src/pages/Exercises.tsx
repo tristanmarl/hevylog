@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO, subDays } from 'date-fns'
 import {
@@ -12,8 +13,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { fetchAllWorkouts } from '../api/hevy'
-import type { Workout } from '../types/hevy'
+import { fetchAllWorkouts } from '../api/dataSource'
+import type { Workout } from '../types/workout'
 import { getExerciseHistory, formatVolume, estimateOneRepMax, detectPlateau } from '../utils/stats'
 import { getMuscleGroupsForExercise } from '../utils/muscles'
 import MusclePill from '../components/MusclePill'
@@ -34,7 +35,8 @@ interface ExerciseSummary {
 }
 
 export default function Exercises() {
-  const { version } = useDataVersion()
+  const { source, version } = useDataVersion()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [allWorkouts, setAllWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -46,21 +48,18 @@ export default function Exercises() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchAllWorkouts()
+      const data = await fetchAllWorkouts(source)
       setAllWorkouts(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load workouts')
     } finally {
       setLoading(false)
     }
-  }, [version])
+  }, [source])
 
   useEffect(() => {
     load()
-  }, [load])
-
-  if (loading) return <FullPageSpinner />
-  if (error) return <ErrorBanner message={error} onRetry={load} />
+  }, [load, version])
 
   // Build exercise summary list
   const exerciseMap = new Map<string, { sessions: number; totalSets: number; prWeightKg: number; prDate: string; lastDoneDate: string; muscles: string[]; est1RM: number; isPlateaued: boolean }>()
@@ -141,6 +140,26 @@ export default function Exercises() {
   const selectedHistory = selected ? getExerciseHistory(allWorkouts, selected) : []
   const selectedSummary = selected ? allExercises.find((e) => e.title === selected) : null
 
+  useEffect(() => {
+    const requested = searchParams.get('exercise')
+    if (!requested || allExercises.length === 0) return
+    const match = allExercises.find((e) => e.title.toLowerCase() === requested.toLowerCase())
+    if (match) setSelected(match.title)
+  }, [allExercises, searchParams])
+
+  function handleSelectExercise(title: string) {
+    const next = title === selected ? null : title
+    setSelected(next)
+    if (next) {
+      setSearchParams({ exercise: next })
+    } else {
+      setSearchParams({})
+    }
+  }
+
+  if (loading) return <FullPageSpinner />
+  if (error) return <ErrorBanner message={error} onRetry={load} />
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Header */}
@@ -151,10 +170,10 @@ export default function Exercises() {
             {filtered.length} of {allExercises.length} exercises
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap w-full sm:w-auto">
           {/* Recency filter */}
           <div
-            className="flex items-center rounded-lg overflow-hidden"
+            className="flex items-center rounded-lg overflow-x-auto"
             style={{ border: '1px solid #333', backgroundColor: '#1a1a1a' }}
           >
             {([30, 90, 365, 'all'] as const).map((r) => (
@@ -176,7 +195,7 @@ export default function Exercises() {
             placeholder="Search exercises..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 outline-none w-52"
+            className="rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 outline-none w-full sm:w-52"
             style={{ backgroundColor: '#252525', border: '1px solid #333' }}
             onFocus={(e) => (e.currentTarget.style.borderColor = '#e86a2e')}
             onBlur={(e) => (e.currentTarget.style.borderColor = '#333')}
@@ -184,15 +203,15 @@ export default function Exercises() {
         </div>
       </div>
 
-      <div className="flex gap-6">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* Exercise list */}
         <div
-          className="rounded-lg overflow-hidden"
+          className={`rounded-lg overflow-hidden w-full ${
+            selected ? 'order-2 lg:order-1 lg:w-[360px] lg:shrink-0' : 'lg:flex-1'
+          }`}
           style={{
             backgroundColor: '#1a1a1a',
             border: '1px solid #2a2a2a',
-            minWidth: 320,
-            flex: selected ? '0 0 360px' : '1',
           }}
         >
           <div
@@ -205,7 +224,7 @@ export default function Exercises() {
             {filtered.map((exercise) => (
               <button
                 key={exercise.title}
-                onClick={() => setSelected(exercise.title === selected ? null : exercise.title)}
+                onClick={() => handleSelectExercise(exercise.title)}
                 className="w-full text-left px-4 py-3 transition-colors"
                 style={{
                   borderBottom: '1px solid #1e1e1e',
@@ -274,7 +293,7 @@ export default function Exercises() {
 
         {/* Detail panel */}
         {selected && selectedSummary && selectedHistory.length > 0 && (
-          <div className="flex-1 min-w-0 space-y-4">
+          <div className="order-1 lg:order-2 w-full lg:flex-1 min-w-0 space-y-4">
             <div
               className="rounded-lg p-5"
               style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
@@ -289,7 +308,10 @@ export default function Exercises() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setSelected(null)}
+                  onClick={() => {
+                    setSelected(null)
+                    setSearchParams({})
+                  }}
                   className="text-gray-500 hover:text-white"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

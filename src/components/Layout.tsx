@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import clsx from 'clsx'
-import { fetchAllWorkouts, getLastFetchTime } from '../api/hevy'
-import type { Workout } from '../types/hevy'
+import { DATA_SOURCE_LABELS, fetchAllWorkouts, getLastFetchTime, type DataSource } from '../api/dataSource'
+import type { Workout } from '../types/workout'
 import GlobalSearch from './GlobalSearch'
 import { useDataVersion } from '../context/DataVersion'
 
@@ -104,7 +104,7 @@ function formatMinutesAgo(date: Date): string {
 }
 
 export default function Layout() {
-  const { version, refresh } = useDataVersion()
+  const { source, setSource, version, refresh } = useDataVersion()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [workouts, setWorkouts] = useState<Workout[]>([])
@@ -113,12 +113,12 @@ export default function Layout() {
 
   const loadWorkouts = useCallback(async () => {
     try {
-      const data = await fetchAllWorkouts()
+      const data = await fetchAllWorkouts(source)
       setWorkouts(data)
     } catch {
       // silently ignore
     }
-  }, [version])
+  }, [source])
 
   async function handleRefresh() {
     setRefreshing(true)
@@ -129,18 +129,18 @@ export default function Layout() {
 
   useEffect(() => {
     loadWorkouts()
-  }, [loadWorkouts])
+  }, [loadWorkouts, version])
 
   // Refresh the "Updated X min ago" label every 60s
   useEffect(() => {
     function updateLabel() {
-      const t = getLastFetchTime()
+      const t = getLastFetchTime(source)
       setLastFetchLabel(t ? formatMinutesAgo(t) : null)
     }
     updateLabel()
     const id = setInterval(updateLabel, 60000)
     return () => clearInterval(id)
-  }, [])
+  }, [source])
 
   // Cmd+K / Ctrl+K shortcut
   useEffect(() => {
@@ -180,7 +180,7 @@ export default function Layout() {
         {/* Logo */}
         <div className="flex items-center justify-between px-6 py-5">
           <span className="text-xl font-bold tracking-tight" style={{ color: '#e86a2e' }}>
-            HevyLog
+            LiftLog
           </span>
           <button
             className="lg:hidden text-gray-400 hover:text-white"
@@ -216,6 +216,28 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+
+        {/* Search button */}
+        <div className="px-3 pb-3">
+          <div
+            className="grid grid-cols-2 gap-1 rounded-lg p-1"
+            style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
+          >
+            {(['hevy', 'liftosaur'] as DataSource[]).map((item) => (
+              <button
+                key={item}
+                onClick={() => setSource(item)}
+                className="rounded-md px-2 py-1.5 text-xs font-semibold transition-colors"
+                style={{
+                  backgroundColor: source === item ? '#e86a2e' : 'transparent',
+                  color: source === item ? '#fff' : '#888',
+                }}
+              >
+                {DATA_SOURCE_LABELS[item]}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Search button */}
         <div className="px-3 pb-3">
@@ -263,24 +285,42 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile header */}
         <header
-          className="lg:hidden flex items-center px-4 py-4 sticky top-0 z-10"
+          className="lg:hidden sticky top-0 z-10"
           style={{ backgroundColor: '#111111', borderBottom: '1px solid #222' }}
         >
-          <button
-            className="text-gray-400 hover:text-white mr-4"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <MenuIcon />
-          </button>
-          <span className="text-lg font-bold flex-1" style={{ color: '#e86a2e' }}>
-            HevyLog
-          </span>
-          <button
-            className="text-gray-400 hover:text-white"
-            onClick={() => setSearchOpen(true)}
-          >
-            <SearchIcon />
-          </button>
+          <div className="flex items-center px-4 py-3">
+            <button
+              className="text-gray-400 hover:text-white mr-4"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <MenuIcon />
+            </button>
+            <span className="text-lg font-bold flex-1" style={{ color: '#e86a2e' }}>
+              LiftLog
+            </span>
+            <button
+              className="text-gray-400 hover:text-white"
+              onClick={() => setSearchOpen(true)}
+            >
+              <SearchIcon />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-1 px-4 pb-3">
+            {(['hevy', 'liftosaur'] as DataSource[]).map((item) => (
+              <button
+                key={item}
+                onClick={() => setSource(item)}
+                className="rounded-md px-2 py-2 text-xs font-semibold transition-colors"
+                style={{
+                  backgroundColor: source === item ? '#e86a2e' : '#1a1a1a',
+                  color: source === item ? '#fff' : '#888',
+                  border: '1px solid #2a2a2a',
+                }}
+              >
+                {DATA_SOURCE_LABELS[item]}
+              </button>
+            ))}
+          </div>
         </header>
 
         {/* Page content */}

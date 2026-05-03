@@ -1,6 +1,6 @@
-# HevyLog
+# LiftLog
 
-Personal fitness dashboard that visualises your [Hevy](https://hevy.com) workout history. Built with React, TypeScript, and Recharts.
+Personal fitness dashboard that visualises your [Hevy](https://hevy.com) or [Liftosaur](https://www.liftosaur.com) workout history. Built with React, TypeScript, and Recharts.
 
 ## Features
 
@@ -22,13 +22,22 @@ Create `.env` from the example:
 cp .env.example .env
 ```
 
-Add your Hevy API key to `.env`:
+Add your keys to `.env`:
 
 ```
 VITE_HEVY_API_KEY=your-api-key-here
+VITE_LIFTOSAUR_API_TOKEN=your-liftosaur-token-here
 ```
 
 Get your API key from [app.hevyapp.com/settings/api](https://app.hevyapp.com/settings/api).
+
+For Liftosaur, set `VITE_LIFTOSAUR_API_TOKEN` — the app fetches history live via a Vite proxy. Alternatively, sync to a local file:
+
+```bash
+npm run sync:liftosaur   # writes public/liftosaur-history.json (git-ignored)
+```
+
+The source switcher in the sidebar lets you toggle between Hevy and Liftosaur at any time.
 
 ```bash
 npm run dev

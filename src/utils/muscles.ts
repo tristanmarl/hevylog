@@ -1,4 +1,4 @@
-import type { Workout, MuscleGroupStats } from '../types/hevy'
+import type { MuscleGroupStats, Workout } from '../types/workout'
 
 const MUSCLE_KEYWORDS: Record<string, string[]> = {
   chest: [

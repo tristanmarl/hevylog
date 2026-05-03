@@ -4,6 +4,11 @@ interface ErrorBannerProps {
 }
 
 export default function ErrorBanner({ message, onRetry }: ErrorBannerProps) {
+  const isMissingKey = message.includes('VITE_HEVY_API_KEY')
+  const displayMessage = isMissingKey
+    ? 'Connect your Hevy API key to load workouts. Create a .env file with VITE_HEVY_API_KEY, then restart the dev server.'
+    : message
+
   return (
     <div
       className="rounded-lg p-4 flex items-center justify-between gap-4"
@@ -25,9 +30,16 @@ export default function ErrorBanner({ message, onRetry }: ErrorBannerProps) {
           <line x1="12" y1="8" x2="12" y2="12" />
           <line x1="12" y1="16" x2="12.01" y2="16" />
         </svg>
-        <p className="text-sm" style={{ color: '#fca5a5' }}>
-          {message}
-        </p>
+        <div>
+          {isMissingKey && (
+            <p className="text-sm font-semibold" style={{ color: '#fee2e2' }}>
+              Setup needed
+            </p>
+          )}
+          <p className="text-sm" style={{ color: '#fca5a5' }}>
+            {displayMessage}
+          </p>
+        </div>
       </div>
       {onRetry && (
         <button

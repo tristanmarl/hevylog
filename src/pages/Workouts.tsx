@@ -14,8 +14,8 @@ import {
   subMonths,
   isToday,
 } from 'date-fns'
-import { fetchAllWorkouts } from '../api/hevy'
-import type { Workout } from '../types/hevy'
+import { fetchAllWorkouts } from '../api/dataSource'
+import type { Workout } from '../types/workout'
 import {
   computeWorkoutVolume,
   computeWorkoutDuration,
@@ -31,7 +31,7 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export default function Workouts() {
   const navigate = useNavigate()
-  const { version } = useDataVersion()
+  const { source, version } = useDataVersion()
   const [allWorkouts, setAllWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,16 +41,16 @@ export default function Workouts() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchAllWorkouts()
+      const data = await fetchAllWorkouts(source)
       setAllWorkouts(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load workouts')
     } finally {
       setLoading(false)
     }
-  }, [version])
+  }, [source])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, version])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -87,18 +87,24 @@ export default function Workouts() {
     const d = parseISO(w.start_time)
     return d >= monthStart && d <= monthEnd
   }).length
+  const monthWorkouts = allWorkouts
+    .filter((w) => {
+      const d = parseISO(w.start_time)
+      return d >= monthStart && d <= monthEnd
+    })
+    .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
 
   return (
     <div className="space-y-5 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-white">Workouts</h1>
           <p className="text-sm mt-0.5" style={{ color: '#999' }}>
             {monthWorkoutCount} workout{monthWorkoutCount !== 1 ? 's' : ''} in {format(currentMonth, 'MMMM yyyy')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <button
             onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
             className="p-2 rounded-lg transition-colors"
@@ -136,8 +142,56 @@ export default function Workouts() {
         </div>
       </div>
 
+      {/* Mobile agenda */}
+      <div className="lg:hidden space-y-2">
+        {monthWorkouts.length === 0 ? (
+          <div className="py-12 text-center rounded-lg" style={{ border: '1px solid #2a2a2a', backgroundColor: '#151515' }}>
+            <p className="text-base" style={{ color: '#777' }}>No workouts in {format(currentMonth, 'MMMM yyyy')}</p>
+            <p className="text-sm mt-1" style={{ color: '#555' }}>Use the month controls to review previous sessions.</p>
+          </div>
+        ) : (
+          monthWorkouts.map((w) => {
+            const duration = computeWorkoutDuration(w)
+            const volume = computeWorkoutVolume(w)
+            const muscles = Array.from(
+              new Set(
+                w.exercises.flatMap((e) =>
+                  getMuscleGroupsForExercise(e.title, e.muscle_groups),
+                ),
+              ),
+            ).filter((m) => m !== 'other').slice(0, 3)
+
+            return (
+              <button
+                key={w.id}
+                onClick={() => navigate(`/workouts/${w.id}`)}
+                className="w-full text-left rounded-lg p-4 transition-colors"
+                style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{w.title}</p>
+                    <p className="text-xs mt-1" style={{ color: '#888' }}>
+                      {format(parseISO(w.start_time), 'EEE, MMM d')} · {formatDuration(duration)} · {formatVolume(volume)}
+                    </p>
+                  </div>
+                  <span className="text-xs shrink-0" style={{ color: '#666' }}>
+                    {format(parseISO(w.start_time), 'HH:mm')}
+                  </span>
+                </div>
+                {muscles.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-3">
+                    {muscles.map((m) => <MusclePill key={m} muscle={m} small />)}
+                  </div>
+                )}
+              </button>
+            )
+          })
+        )}
+      </div>
+
       {/* Calendar */}
-      <div className="rounded-lg overflow-hidden" style={{ border: '1px solid #2a2a2a' }}>
+      <div className="hidden lg:block rounded-lg overflow-hidden" style={{ border: '1px solid #2a2a2a' }}>
         {/* Weekday headers */}
         <div className="grid grid-cols-7" style={{ backgroundColor: '#151515', borderBottom: '1px solid #2a2a2a' }}>
           {WEEKDAYS.map((d) => (

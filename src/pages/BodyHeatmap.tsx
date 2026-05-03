@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO, differenceInDays } from 'date-fns'
-import { fetchAllWorkouts } from '../api/hevy'
-import type { Workout, MuscleGroupStats } from '../types/hevy'
+import { fetchAllWorkouts } from '../api/dataSource'
+import type { MuscleGroupStats, Workout } from '../types/workout'
 import { computeMuscleHeatmapForPeriod } from '../utils/muscles'
 import { getMuscleBalance, getMuscleNeglectAlerts, getWeeklyMuscleFrequency } from '../utils/stats'
 import { FullPageSpinner } from '../components/Spinner'
@@ -12,6 +12,8 @@ import AppTooltip from '../components/Tooltip'
 // MEV = minimum effective volume (sets/week). MAV = maximum adaptive volume.
 // Secondary muscles (biceps, triceps, shoulders, core) need less direct work
 // because compound lifts already stimulate them heavily.
+const MUSCLE_ORDER = ['back', 'chest', 'legs', 'shoulders', 'biceps', 'triceps', 'core', 'cardio']
+
 const MUSCLE_TARGETS: Record<string, { mev: number; mav: number }> = {
   back:      { mev: 10, mav: 22 },
   chest:     { mev: 8,  mav: 20 },
@@ -267,7 +269,7 @@ function BodySVG({
 }
 
 export default function BodyHeatmap() {
-  const { version } = useDataVersion()
+  const { source, version } = useDataVersion()
   const [allWorkouts, setAllWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -279,18 +281,18 @@ export default function BodyHeatmap() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchAllWorkouts()
+      const data = await fetchAllWorkouts(source)
       setAllWorkouts(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load workouts')
     } finally {
       setLoading(false)
     }
-  }, [version])
+  }, [source])
 
   useEffect(() => {
     load()
-  }, [load])
+  }, [load, version])
 
   if (loading) return <FullPageSpinner />
   if (error) return <ErrorBanner message={error} onRetry={load} />
@@ -322,7 +324,7 @@ export default function BodyHeatmap() {
             Muscle activation based on training volume
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm" style={{ color: '#888' }}>Period:</span>
           {[1, 2, 4, 8, 12].map((w) => (
             <button
@@ -437,7 +439,11 @@ export default function BodyHeatmap() {
                 </AppTooltip>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                {muscleFrequency.map((mf) => {
+                {[...muscleFrequency].sort((a, b) => {
+                  const ai = MUSCLE_ORDER.indexOf(a.muscle)
+                  const bi = MUSCLE_ORDER.indexOf(b.muscle)
+                  return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+                }).map((mf) => {
                   const target = MUSCLE_TARGETS[mf.muscle] ?? { mev: 6, mav: 16 }
                   const category = MUSCLE_CATEGORY[mf.muscle] ?? ''
                   const note = MUSCLE_TARGET_NOTE[mf.muscle]
@@ -475,8 +481,20 @@ export default function BodyHeatmap() {
         </div>
       )}
 
-      {/* Body diagrams — fixed 2-col layout, never reflowing */}
-      <div className="grid gap-6" style={{ gridTemplateColumns: '1fr 1fr' }}>
+      {neglectAlerts.length > 0 && (
+        <div
+          className="rounded-lg p-4"
+          style={{ backgroundColor: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)' }}
+        >
+          <p className="text-xs uppercase tracking-wider" style={{ color: '#facc15' }}>Train soon</p>
+          <p className="text-sm mt-1" style={{ color: '#ddd' }}>
+            {neglectAlerts.slice(0, 3).map((a) => a.muscle).join(', ')} {neglectAlerts.length === 1 ? 'has' : 'have'} had the longest break.
+          </p>
+        </div>
+      )}
+
+      {/* Body diagrams */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         {/* Front */}
         <div
           className="rounded-lg p-4"
@@ -518,8 +536,8 @@ export default function BodyHeatmap() {
         style={{
           backgroundColor: '#1a1a1a',
           border: '1px solid #2a2a2a',
-          opacity: hoveredRegion && hoveredStats ? 1 : 0,
-          pointerEvents: hoveredRegion && hoveredStats ? 'auto' : 'none',
+          opacity: 1,
+          pointerEvents: 'auto',
           minHeight: 80,
         }}
       >
@@ -560,7 +578,7 @@ export default function BodyHeatmap() {
             </div>
           </div>
         ) : (
-          <p className="text-sm" style={{ color: '#444' }}>Hover over a muscle group</p>
+          <p className="text-sm" style={{ color: '#666' }}>Tap or hover over a muscle group to see what trained it.</p>
         )}
       </div>
 

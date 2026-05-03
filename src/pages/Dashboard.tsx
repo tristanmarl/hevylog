@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDataVersion } from '../context/DataVersion'
 import { format, parseISO } from 'date-fns'
-import { fetchAllWorkouts } from '../api/hevy'
-import type { Workout } from '../types/hevy'
+import { DATA_SOURCE_LABELS, fetchAllWorkouts } from '../api/dataSource'
+import type { Workout } from '../types/workout'
 import {
   getWeeklyStats,
   getPeriodStats,
@@ -54,7 +54,7 @@ function volumeContext(kg: number): string | null {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { version } = useDataVersion()
+  const { source, version } = useDataVersion()
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -75,16 +75,16 @@ export default function Dashboard() {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchAllWorkouts()
+      const data = await fetchAllWorkouts(source)
       setWorkouts(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load workouts')
     } finally {
       setLoading(false)
     }
-  }, [version])
+  }, [source])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, version])
 
   if (loading) return <FullPageSpinner />
   if (error) return <ErrorBanner message={error} onRetry={load} />
@@ -129,7 +129,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold text-white">Overview</h1>
           <p className="text-sm mt-1" style={{ color: '#999' }}>
-            What to focus on for your next gym session
+            A simple read on what to do next from {DATA_SOURCE_LABELS[source]}
           </p>
         </div>
       </div>
@@ -185,8 +185,8 @@ export default function Dashboard() {
         {progressionSuggestions.length > 0 ? (
           <>
             <div className="flex items-center gap-2 mb-3">
-              <h3 className="text-sm font-semibold text-white">Weight targets</h3>
-              <Tooltip text="These targets use exercises from the next routine workout only, so they match the workout shown above.">
+              <h3 className="text-sm font-semibold text-white">Simple targets</h3>
+              <Tooltip text="Use these as suggestions, not rules. If form is not steady, repeat the previous weight.">
                 <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
               </Tooltip>
             </div>
@@ -199,7 +199,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2 shrink-0">
                     <span style={{ color: '#555' }}>{s.lastWeightKg} kg</span>
                     {s.isPlateaued ? (
-                      <Tooltip text="Same weight for 3+ sessions. Try changing the rep range, or take a lighter week.">
+                      <Tooltip text="Same weight for 3+ sessions. Repeat it with cleaner reps, use a smaller increase, or take a lighter week.">
                         <span
                           className="text-xs px-2 py-0.5 rounded cursor-default"
                           style={{
@@ -208,7 +208,7 @@ export default function Dashboard() {
                             border: '1px solid rgba(250,204,21,0.2)',
                           }}
                         >
-                          plateau
+                          needs attention
                         </span>
                       </Tooltip>
                     ) : (
@@ -226,7 +226,7 @@ export default function Dashboard() {
           </>
         ) : (
           <p className="text-sm" style={{ color: '#666' }}>
-            No previous {nextRoutineWorkout.title} logged yet, so there are no weight targets for this slot.
+            No previous {nextRoutineWorkout.title} found yet. Start conservative, write down what felt easy or hard, and let the next session set the target.
           </p>
         )}
       </div>
@@ -321,8 +321,8 @@ export default function Dashboard() {
               trendValue: trendLabel(countChange),
             },
             {
-              title: 'Volume',
-              hint: 'Total weight moved: sets x reps x weight across all exercises. Trending up over time means you are getting stronger.',
+              title: 'Total work',
+              hint: 'Total work is sets x reps x weight across your exercises. It should trend up slowly, but not every single week.',
               value: formatVolume(current.totalVolumeKg),
               note: volumeContext(current.totalVolumeKg) ?? undefined,
               trend: trendDir(volumeChange),
@@ -368,8 +368,8 @@ export default function Dashboard() {
           style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
         >
           <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-base font-semibold text-white">PRs this period</h2>
-            <Tooltip text="Personal records — your heaviest lift for each exercise this period. Consistent new PRs = you're getting stronger.">
+            <h2 className="text-base font-semibold text-white">Strength wins this period</h2>
+            <Tooltip text="Personal records are your best recent lifts. They are useful signals, but good form matters more than chasing a number.">
               <span className="text-xs cursor-default" style={{ color: '#555' }}>ⓘ</span>
             </Tooltip>
           </div>
@@ -394,7 +394,7 @@ export default function Dashboard() {
                     {orm > 0 && (
                       <Tooltip text="Estimated 1-rep max (Epley formula) — the heaviest single rep you could theoretically do right now.">
                         <span className="ml-2 text-xs cursor-default" style={{ color: '#666' }}>
-                          ~{orm} kg 1RM
+                          ~{orm} kg max estimate
                         </span>
                       </Tooltip>
                     )}
