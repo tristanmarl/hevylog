@@ -59,7 +59,7 @@ export default function StatCard({
 }: StatCardProps) {
   return (
     <div
-      className={clsx('rounded-lg p-5 flex flex-col gap-1', className)}
+      className={clsx('rounded-lg p-5 flex flex-col gap-1 h-full', className)}
       style={{ backgroundColor: '#1a1a1a', border: '1px solid #2a2a2a' }}
     >
       <p className="text-sm font-medium uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#999' }}>
